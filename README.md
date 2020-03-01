@@ -1,29 +1,12 @@
 # bibo-img-crypto
+自动加密解密B博上传的图片，[weibo-img-crypto](https://github.com/xfgryujk/weibo-img-crypto) 的B博版
 
-## Project setup
-```
-npm install
-```
+## 算法说明
+加密的原理是把像素块或 RGB 数据随机移动到一个新位置，所以加密解密时的随机种子必须一样。默认的随机种子是 `114514`，可以在设置界面修改随机种子
 
-### Compiles and hot-reloads for development
-```
-npm run serve
-```
+推荐使用`块随机置乱`算法，这样不会出现有损压缩再解密造成的高频噪声。`RGB随机置乱`算法会出现有损压缩再解密造成的高频噪声
 
-### Compiles and minifies for production
-```
-npm run build
-```
+## 兼容性
+不支持 GIF 图
 
-### Run your tests
-```
-npm run test
-```
-
-### Lints and fixes files
-```
-npm run lint
-```
-
-### Customize configuration
-See [Configuration Reference](https://cli.vuejs.org/config/).
+只在 Chrome、Edge 浏览器测试过，不保证支持其他浏览器 ~~（IE 是什么？我可不知道）~~

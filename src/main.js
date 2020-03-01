@@ -1,8 +1,18 @@
 import Vue from 'vue'
-import App from './App.vue'
+import ElementUI from 'element-ui'
+import 'element-ui/lib/theme-chalk/index.css'
+import * as hooks from './hooks'
+import * as gui from './gui'
 
-Vue.config.productionTip = false
+function main () {
+  Vue.use(ElementUI)
+  hooks.init()
+  gui.init()
+}
 
-new Vue({
-  render: h => h(App),
-}).$mount('#app')
+if (window.isBiboImgCryptoLoaded) {
+  window.alert('bibo-img-crypto 已经加载，请不要重复加载')
+} else {
+  window.isBiboImgCryptoLoaded = true
+  main()
+}
