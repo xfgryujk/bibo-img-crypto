@@ -1,4 +1,3 @@
-import {Notification} from 'element-ui'
 import {encrypt, decrypt} from './codec'
 import {getConfig} from './config'
 
@@ -9,7 +8,51 @@ export function init () {
 
 // Hook上传图片函数
 async function hookUpload () {
-  // WIP
+  // Hook XHR open，记录URL
+  let originalOpen = window.XMLHttpRequest.prototype.open
+  window.XMLHttpRequest.prototype.open = function (method, url, ...args) {
+    this.__bibo__ = {url: url}
+    return originalOpen.call(this, method, url, ...args)
+  }
+
+  // Hook XHR send，加密
+  let originalSend = window.XMLHttpRequest.prototype.send
+  window.XMLHttpRequest.prototype.send = function (data) {
+    if (!getConfig().enableEncryption || !this.__bibo__ || !this.__bibo__.url.endsWith('/drawImage/upload')) {
+      originalSend.call(this, data)
+      return
+    }
+    let file = data.get('file_up')
+    if (!file || file.type === 'image/gif') {
+      originalSend.call(this, data)
+      return
+    }
+    let oldImgUrl = URL.createObjectURL(file)
+    let img = new Image()
+    img.onload = () => {
+      let newImgUrl = encrypt(img)
+      URL.revokeObjectURL(oldImgUrl)
+      if (newImgUrl === '') {
+        this.onerror(new ProgressEvent('encrypt failed'))
+        return
+      }
+      data.delete('file_up')
+      data.set('file_up', dataUrlToBlob(newImgUrl))
+      originalSend.call(this, data)
+    }
+    img.src = oldImgUrl
+  }
+}
+
+function dataUrlToBlob (url) {
+  let [mime, base64] = url.split(',', 2)
+  mime = mime.match(/:(.*?);/)[1]
+  let bin = atob(base64)
+  let uint8Arr = new Uint8Array(bin.length)
+  for (let i in bin) {
+    uint8Arr[i] = bin.charCodeAt(i)
+  }
+  return new Blob([uint8Arr], {type: mime})
 }
 
 // 监听右键菜单
@@ -26,11 +69,5 @@ function hookContextMenu () {
         originImg.src = url
       }
     }
-  })
-}
-
-async function sleep (time) {
-  return new Promise(resolve => {
-    window.setTimeout(resolve, time)
   })
 }

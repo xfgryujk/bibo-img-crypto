@@ -20,10 +20,9 @@ export async function decrypt (originImg) {
   try {
     img = await loadImage(getImgSrcToDecrypt(originImg), true)
   } catch (e) {
-    console.log(e)
     Notification.error({
       title: '解密图片',
-      message: '载入图片失败，可能是跨域问题？',
+      message: '载入图片失败：' + e,
       position: 'bottom-left',
       duration: 3000
     })
