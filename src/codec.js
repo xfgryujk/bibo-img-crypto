@@ -4,14 +4,10 @@ import {getConfig} from './config'
 
 let codecClasses = {}
 
-let canvas = document.createElement('canvas')
-let ctx = canvas.getContext('2d')
 
-// 加密图片，返回data URL
+// 加密图片，返回blob
 export function encrypt (img) {
-  return doCodecCommon(img, imgData =>
-    createCodec(getConfig().codecName, imgData).encrypt()
-  )
+  return createCodec(getConfig().codecName, img).encryptToBlob()
 }
 
 // 解密图片，返回data URL
@@ -28,23 +24,7 @@ export async function decrypt (originImg) {
     })
     return ''
   }
-  return doCodecCommon(img, imgData => 
-    createCodec(getConfig().codecName, imgData).decrypt()
-  )
-}
-
-// 加密解密通用的部分，返回处理后的data URL。handleImgData传入imgData，返回新的imgData
-function doCodecCommon (img, handleImgData) {
-  [canvas.width, canvas.height] = [img.width, img.height]
-  // 把透明图片和白色混合
-  ctx.fillStyle = '#fff'
-  ctx.fillRect(0, 0, img.width, img.height)
-  ctx.drawImage(img, 0, 0)
-  let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-  imgData = handleImgData(imgData);
-  [canvas.width, canvas.height] = [imgData.width, imgData.height]
-  ctx.putImageData(imgData, 0, 0)
-  return canvas.toDataURL()
+  return createCodec(getConfig().codecName, img).decryptToUrl()
 }
 
 function getImgSrcToDecrypt (originImg) {
@@ -59,7 +39,7 @@ function getImgSrcToDecrypt (originImg) {
 }
 
 async function loadImage (src, isCrossOrigin = false) {
-  let img = new window.Image()
+  let img = new Image()
   if (isCrossOrigin) {
     img.crossOrigin = 'anonymous'
   }
@@ -70,25 +50,68 @@ async function loadImage (src, isCrossOrigin = false) {
   })
 }
 
-function createCodec (name, imgData) {
-  let CodecClass = name in codecClasses ? codecClasses[name] : codecClasses.Move8x8BlockCodec
-  return new CodecClass(imgData)
+function createCodec (name, img) {
+  let CodecClass = codecClasses[name] || ShuffleBlockCodec
+  return new CodecClass(img)
 }
 
 class Codec {
-  constructor (imgData) {
-    this._imgData = imgData
+  constructor (img) {
+    this._img = img
+    this._canvas = document.createElement('canvas')
+    this._ctx = this._canvas.getContext('2d')
+    this._imgData = null
   }
+
+  // 加密，返回加密后的blob
+  encryptToBlob () {
+    this._initImgData()
+    let newImgData = this._doEncrypt()
+    this._canvas.width = newImgData.width
+    this._canvas.height = newImgData.height
+    this._ctx.putImageData(newImgData, 0, 0)
+    let url = this._canvas.toDataURL()
+    return dataUrlToBlob(url)
+  }
+
+  // 解密，返回解密后的data URL
+  decryptToUrl () {
+    this._initImgData()
+    let newImgData = this._doDecrypt()
+    this._canvas.width = newImgData.width
+    this._canvas.height = newImgData.height
+    this._ctx.putImageData(newImgData, 0, 0)
+    return this._canvas.toDataURL()
+  }
+
+  _initImgData () {
+    this._canvas.width = this._img.width
+    this._canvas.height = this._img.height
+    this._ctx.drawImage(this._img, 0, 0)
+    this._imgData = this._ctx.getImageData(0, 0, this._canvas.width, this._canvas.height)
+  }
+
   // 加密，返回加密后的imgData
-  encrypt () {}
+  _doEncrypt () {}
   // 解密，返回解密后的imgData
-  decrypt () {}
+  _doDecrypt () {}
+}
+
+export function dataUrlToBlob (url) {
+  let [mime, base64] = url.split(',', 2)
+  mime = mime.match(/:(.*?);/)[1]
+  let bin = atob(base64)
+  let uint8Arr = new Uint8Array(bin.length)
+  for (let i in bin) {
+    uint8Arr[i] = bin.charCodeAt(i)
+  }
+  return new Blob([uint8Arr], {type: mime})
 }
 
 // 反色
 class InvertCodec extends Codec {
-  encrypt () { return this._invertColor() }
-  decrypt () { return this._invertColor() }
+  _doEncrypt () { return this._invertColor() }
+  _doDecrypt () { return this._invertColor() }
   _invertColor () {
     let data = this._imgData.data
     for (let i = 0; i < data.length; i += 4) {
@@ -103,7 +126,17 @@ codecClasses.InvertCodec = InvertCodec
 
 // RGB随机置乱
 class ShuffleRgbCodec extends Codec {
-  encrypt () {
+  _initImgData () {
+    this._canvas.width = this._img.width
+    this._canvas.height = this._img.height
+    // 把透明图片和白色混合，因为透明通道置乱会有问题
+    this._ctx.fillStyle = '#fff'
+    this._ctx.fillRect(0, 0, this._img.width, this._img.height)
+    this._ctx.drawImage(this._img, 0, 0)
+    this._imgData = this._ctx.getImageData(0, 0, this._canvas.width, this._canvas.height)
+  }
+
+  _doEncrypt () {
     let data = this._imgData.data
     let nRgbs = data.length / 4 * 3
     let seq = new RandomSequence(nRgbs, getConfig().randomSeed)
@@ -122,7 +155,7 @@ class ShuffleRgbCodec extends Codec {
     return this._imgData
   }
 
-  decrypt () {
+  _doDecrypt () {
     let data = this._imgData.data
     let nRgbs = data.length / 4 * 3
     let buffer = new Uint8ClampedArray(nRgbs)
@@ -146,13 +179,13 @@ codecClasses.ShuffleRgbCodec = ShuffleRgbCodec
 // 块随机置乱
 // 由于JPEG是分成8x8的块在块内压缩，分成8x8块处理可以避免压缩再解密造成的高频噪声
 class ShuffleBlockCodec extends Codec {
-  encrypt () {
+  _doEncrypt () {
     return this._doCommon((result, blockX, blockY, newBlockX, newBlockY) =>
       this._copyBlock(result, newBlockX, newBlockY, this._imgData, blockX, blockY)
     )
   }
 
-  decrypt () {
+  _doDecrypt () {
     return this._doCommon((result, blockX, blockY, newBlockX, newBlockY) =>
       this._copyBlock(result, blockX, blockY, this._imgData, newBlockX, newBlockY)
     )
@@ -162,7 +195,7 @@ class ShuffleBlockCodec extends Codec {
     // 尺寸不是8的倍数则去掉边界
     let blockWidth = Math.floor(this._imgData.width / 8)
     let blockHeight = Math.floor(this._imgData.height / 8)
-    let result = ctx.createImageData(blockWidth * 8, blockHeight * 8)
+    let result = this._ctx.createImageData(blockWidth * 8, blockHeight * 8)
     let seq = new RandomSequence(blockWidth * blockHeight, getConfig().randomSeed)
     for (let blockY = 0; blockY < blockHeight; blockY++) {
       for (let blockX = 0; blockX < blockWidth; blockX++) {

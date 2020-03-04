@@ -9,14 +9,16 @@
         <el-input @paste.native.prevent="onPaste" placeholder="也可以在此处粘贴图片"></el-input>
       </el-form-item>
       <el-form-item label="选择图片">
-        <el-upload action="" drag multiple list-type="picture" :file-list="fileList" :before-upload="onUpload" :on-remove="onRemove" :on-preview="onPreview">
+        <el-upload action="" drag multiple list-type="picture" :file-list="fileList"
+          :before-upload="onUpload" :on-remove="handleChange" :on-preview="onPreview"
+        >
           <i class="el-icon-upload"></i>
           <div class="el-upload__text">将文件拖到此处，或<em>点击选择</em></div>
         </el-upload>
       </el-form-item>
     </el-form>
 
-    <el-dialog :title="largeImgTitle" :visible.sync="largeImgVisible" append-to-body>
+    <el-dialog :title="largeImgTitle" :visible.sync="largeImgVisible" append-to-body @closed="onPreviewClosed">
       <a href="#" @click.prevent="onClickLargeImg">
         <img class="image" :src="largeImgUrl">
       </a>
@@ -25,7 +27,7 @@
 </template>
 
 <script>
-import {encrypt, decrypt} from '@/codec'
+import {encrypt, decrypt, dataUrlToBlob} from '@/codec'
 
 export default {
   data () {
@@ -35,7 +37,7 @@ export default {
       largeImgTitle: '',
       largeImgVisible: false,
       largeImgUrl: '',
-      largeImgUrlShort: ''
+      largeImgUrlForOpen: ''
     }
   },
   methods: {
@@ -55,11 +57,16 @@ export default {
       if (!file.type.startsWith('image') || file.type === 'image/gif') { // 不支持GIF
         return
       }
-      let reader = new window.FileReader()
+      let reader = new FileReader()
       reader.onload = () => {
-        let img = new window.Image()
+        let img = new Image()
         img.onload = async () => {
-          let url = this.isEncryption ? encrypt(img) : await decrypt(img)
+          let url
+          if (this.isEncryption) {
+            url = URL.createObjectURL(encrypt(img))
+          } else {
+            url = await decrypt(img)
+          }
           if (url !== '') {
             this.fileList.push({name: file.name, url: url})
           }
@@ -68,34 +75,40 @@ export default {
       }
       reader.readAsDataURL(file)
     },
-    onRemove (file, fileList) {
+    // 添加和删除文件都会调用，可能是element的bug
+    handleChange (file, fileList) {
+      if (file.status === 'success') {
+        // 正在删除
+        if (file.url.startsWith('blob:')) {
+          URL.revokeObjectURL(file.url)
+        }
+      }
+      // 不改变this.fileList会有无法删除的问题
       this.fileList = fileList
     },
     onPreview (file) {
       this.largeImgTitle = file.name
       this.largeImgUrl = file.url
-      window.URL.revokeObjectURL(this.largeImgUrlShort)
-      this.largeImgUrlShort = ''
+      this.largeImgUrlForOpen = ''
       this.largeImgVisible = true
     },
-    onClickLargeImg () {
-      let url
-      if (this.largeImgUrlShort) {
-        url = this.largeImgUrlShort
-      } else if (this.largeImgUrl.startsWith('data:')) {
-        // Chrome和Edge无法打开data URL？
-        let [memePart, base64Str] = this.largeImgUrl.split(',')
-        let meme = /:(.*?);/.exec(memePart)[1]
-        let dataStr = atob(base64Str)
-        let data = new Uint8Array(dataStr.length)
-        for (let i = 0; i < dataStr.length; i++) {
-          data[i] = dataStr.charCodeAt(i)
-        }
-        url = this.largeImgUrlShort = window.URL.createObjectURL(new Blob([data], {type: meme}))
-      } else {
-        url = this.largeImgUrlShort = this.largeImgUrl
+    onPreviewClosed () {
+      if (this.largeImgUrlForOpen !== '' && this.largeImgUrlForOpen !== this.largeImgUrl) {
+        URL.revokeObjectURL(this.largeImgUrlForOpen)
+        this.largeImgUrlForOpen = ''
       }
-      window.open(url) // Edge还是不允许打开blob URL，没办法了
+    },
+    onClickLargeImg () {
+      if (this.largeImgUrlForOpen === '') {
+        if (this.largeImgUrl.startsWith('data:')) {
+          // 无法直接打开data URL，需要转成blob再创建短URL
+          let blob = dataUrlToBlob(this.largeImgUrl)
+          this.largeImgUrlForOpen = URL.createObjectURL(blob)
+        } else {
+          this.largeImgUrlForOpen = this.largeImgUrl
+        }
+      }
+      window.open(this.largeImgUrlForOpen) // Edge还是不允许打开blob URL，没办法了
     }
   }
 }

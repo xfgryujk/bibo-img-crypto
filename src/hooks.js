@@ -30,37 +30,23 @@ async function hookUpload () {
     let oldImgUrl = URL.createObjectURL(file)
     let img = new Image()
     img.onload = () => {
-      let newImgUrl = encrypt(img)
+      let blob = encrypt(img)
       URL.revokeObjectURL(oldImgUrl)
-      if (newImgUrl === '') {
-        this.onerror(new ProgressEvent('encrypt failed'))
-        return
-      }
       data.delete('file_up')
-      data.set('file_up', dataUrlToBlob(newImgUrl))
+      data.set('file_up', blob)
       originalSend.call(this, data)
     }
     img.src = oldImgUrl
   }
 }
 
-function dataUrlToBlob (url) {
-  let [mime, base64] = url.split(',', 2)
-  mime = mime.match(/:(.*?);/)[1]
-  let bin = atob(base64)
-  let uint8Arr = new Uint8Array(bin.length)
-  for (let i in bin) {
-    uint8Arr[i] = bin.charCodeAt(i)
-  }
-  return new Blob([uint8Arr], {type: mime})
-}
-
 // 监听右键菜单
 function hookContextMenu () {
   document.addEventListener('contextmenu', async event => {
     let originImg = event.target
-    if (getConfig().enableDecryption && originImg instanceof window.Image) {
-      if (originImg.src.startsWith('data:')) { // 如果是'data:'开头说明已经解密过了
+    if (getConfig().enableDecryption && originImg instanceof Image) {
+      if (originImg.src.startsWith('data:') || originImg.src.startsWith('blob:')) {
+        // 已经解密过了
         return
       }
       event.preventDefault() // 解密时屏蔽右键菜单
