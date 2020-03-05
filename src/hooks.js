@@ -1,4 +1,5 @@
-import {encrypt, decrypt} from './codec'
+import {Notification} from 'element-ui'
+import {createCodec} from './codec'
 import {getConfig} from './config'
 
 export function init () {
@@ -17,7 +18,7 @@ async function hookUpload () {
 
   // Hook XHR send，加密
   let originalSend = window.XMLHttpRequest.prototype.send
-  window.XMLHttpRequest.prototype.send = function (data) {
+  window.XMLHttpRequest.prototype.send = async function (data) {
     if (!getConfig().enableEncryption || !this.__bibo__ || !this.__bibo__.url.endsWith('/drawImage/upload')) {
       originalSend.call(this, data)
       return
@@ -27,16 +28,25 @@ async function hookUpload () {
       originalSend.call(this, data)
       return
     }
-    let oldImgUrl = URL.createObjectURL(file)
-    let img = new Image()
-    img.onload = () => {
-      let blob = encrypt(img)
-      URL.revokeObjectURL(oldImgUrl)
-      data.delete('file_up')
-      data.set('file_up', blob)
-      originalSend.call(this, data)
+
+    let codec = createCodec()
+    try {
+      await codec.initFromBlob(file)
+    } catch (e) {
+      Notification.error({
+        title: 'bibo',
+        message: '载入图片失败：' + e,
+        position: 'bottom-left',
+        duration: 3000
+      })
+      this.onerror(e)
+      return
     }
-    img.src = oldImgUrl
+
+    let blob = codec.encryptToBlob()
+    data.delete('file_up')
+    data.set('file_up', blob)
+    originalSend.call(this, data)
   }
 }
 
@@ -50,10 +60,21 @@ function hookContextMenu () {
         return
       }
       event.preventDefault() // 解密时屏蔽右键菜单
-      let url = await decrypt(originImg)
-      if (url) {
-        originImg.src = url
+
+      let codec = createCodec()
+      try {
+        await codec.initFromUrl(originImg.src)
+      } catch (e) {
+        Notification.error({
+          title: 'bibo',
+          message: '载入图片失败：' + e,
+          position: 'bottom-left',
+          duration: 3000
+        })
+        return
       }
+
+      originImg.src = codec.decryptToUrl()
     }
   })
 }

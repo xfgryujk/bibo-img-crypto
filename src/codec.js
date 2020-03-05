@@ -1,100 +1,11 @@
-import {Notification} from 'element-ui'
 import {RandomSequence} from './random'
 import {getConfig} from './config'
 
 let codecClasses = {}
 
-
-// 加密图片，返回blob
-export function encrypt (img) {
-  return createCodec(getConfig().codecName, img).encryptToBlob()
-}
-
-// 解密图片，返回data URL
-export async function decrypt (originImg) {
-  let img
-  try {
-    img = await loadImage(getImgSrcToDecrypt(originImg), true)
-  } catch (e) {
-    Notification.error({
-      title: '解密图片',
-      message: '载入图片失败：' + e,
-      position: 'bottom-left',
-      duration: 3000
-    })
-    return ''
-  }
-  return createCodec(getConfig().codecName, img).decryptToUrl()
-}
-
-function getImgSrcToDecrypt (originImg) {
-  // 获取原图地址，防止B博缩小图片尺寸导致解密失败
-  let pos = originImg.src.indexOf('@')
-  let src = pos === -1 ? originImg.src : originImg.src.substr(0, pos)
-  if (!src.startsWith('data:')) {
-    // 防缓存，为了跨域
-    src += (src.indexOf('?') === -1 ? '?_t=' : '&_t=') + new Date().getTime()
-  }
-  return src
-}
-
-async function loadImage (src, isCrossOrigin = false) {
-  let img = new Image()
-  if (isCrossOrigin) {
-    img.crossOrigin = 'anonymous'
-  }
-  return new Promise((resolve, reject) => {
-    img.onerror = () => reject(new Error('载入图片失败'))
-    img.onload = () => resolve(img)
-    img.src = src
-  })
-}
-
-function createCodec (name, img) {
-  let CodecClass = codecClasses[name] || ShuffleBlockCodec
-  return new CodecClass(img)
-}
-
-class Codec {
-  constructor (img) {
-    this._img = img
-    this._canvas = document.createElement('canvas')
-    this._ctx = this._canvas.getContext('2d')
-    this._imgData = null
-  }
-
-  // 加密，返回加密后的blob
-  encryptToBlob () {
-    this._initImgData()
-    let newImgData = this._doEncrypt()
-    this._canvas.width = newImgData.width
-    this._canvas.height = newImgData.height
-    this._ctx.putImageData(newImgData, 0, 0)
-    let url = this._canvas.toDataURL()
-    return dataUrlToBlob(url)
-  }
-
-  // 解密，返回解密后的data URL
-  decryptToUrl () {
-    this._initImgData()
-    let newImgData = this._doDecrypt()
-    this._canvas.width = newImgData.width
-    this._canvas.height = newImgData.height
-    this._ctx.putImageData(newImgData, 0, 0)
-    return this._canvas.toDataURL()
-  }
-
-  _initImgData () {
-    this._canvas.width = this._img.width
-    this._canvas.height = this._img.height
-    this._ctx.drawImage(this._img, 0, 0)
-    this._imgData = this._ctx.getImageData(0, 0, this._canvas.width, this._canvas.height)
-  }
-
-  // 加密，返回加密后的imgData
-  _doEncrypt () {}
-  // 解密，返回解密后的imgData
-  _doDecrypt () {}
+export function createCodec () {
+  let CodecClass = codecClasses[getConfig().codecName] || ShuffleBlockCodec
+  return new CodecClass()
 }
 
 export function dataUrlToBlob (url) {
@@ -106,6 +17,85 @@ export function dataUrlToBlob (url) {
     uint8Arr[i] = bin.charCodeAt(i)
   }
   return new Blob([uint8Arr], {type: mime})
+}
+
+function getImgSrcToDecrypt (originSrc) {
+  // 获取原图地址，防止B博缩小图片尺寸导致解密失败
+  let pos = originSrc.indexOf('@')
+  let src = pos === -1 ? originSrc : originSrc.substr(0, pos)
+  if (!src.startsWith('data:')) {
+    // 防缓存，为了跨域
+    src += (src.indexOf('?') === -1 ? '?_t=' : '&_t=') + new Date().getTime()
+  }
+  return src
+}
+
+async function loadImage (src, isCrossOrigin = false) {
+  return new Promise((resolve, reject) => {
+    let img = new Image()
+    if (isCrossOrigin) {
+      img.crossOrigin = 'anonymous'
+    }
+    img.onload = () => resolve(img)
+    img.onerror = e => reject(e)
+    img.src = src
+  })
+}
+
+class Codec {
+  constructor () {
+    this._canvas = document.createElement('canvas')
+    this._ctx = this._canvas.getContext('2d')
+    this._img = null
+    this._imgData = null
+  }
+
+  async initFromBlob (blob) {
+    let blobUrl = URL.createObjectURL(blob)
+    try {
+      let img = await loadImage(blobUrl)
+      this.initFromImg(img)
+    } finally {
+      URL.revokeObjectURL(blobUrl)
+    }
+  }
+
+  async initFromUrl (url) {
+    let img = await loadImage(getImgSrcToDecrypt(url), true)
+    this.initFromImg(img)
+  }
+
+  async initFromImg (img) {
+    this._img = img
+    this._canvas.width = this._img.width
+    this._canvas.height = this._img.height
+    this._ctx.drawImage(this._img, 0, 0)
+    this._imgData = this._ctx.getImageData(0, 0, this._canvas.width, this._canvas.height)
+  }
+
+  // 加密，返回加密后的blob
+  encryptToBlob () {
+    let newImgData = this._doEncrypt()
+    this._canvas.width = newImgData.width
+    this._canvas.height = newImgData.height
+    this._ctx.putImageData(newImgData, 0, 0)
+    let url = this._canvas.toDataURL()
+    return dataUrlToBlob(url)
+  }
+
+  // 解密，返回解密后的data URL
+  decryptToUrl () {
+    let newImgData = this._doDecrypt()
+    this._canvas.width = newImgData.width
+    this._canvas.height = newImgData.height
+    this._ctx.putImageData(newImgData, 0, 0)
+    return this._canvas.toDataURL()
+  }
+
+  // 加密，返回加密后的imgData
+  _doEncrypt () {}
+  // 解密，返回解密后的imgData
+  _doDecrypt () {}
 }
 
 // 反色
@@ -126,7 +116,8 @@ codecClasses.InvertCodec = InvertCodec
 
 // RGB随机置乱
 class ShuffleRgbCodec extends Codec {
-  _initImgData () {
+  async initFromImg (img) {
+    this._img = img
     this._canvas.width = this._img.width
     this._canvas.height = this._img.height
     // 把透明图片和白色混合，因为透明通道置乱会有问题

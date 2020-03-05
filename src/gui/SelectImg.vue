@@ -27,7 +27,8 @@
 </template>
 
 <script>
-import {encrypt, decrypt, dataUrlToBlob} from '@/codec'
+import {Notification} from 'element-ui'
+import {createCodec, dataUrlToBlob} from '@/codec'
 
 export default {
   data () {
@@ -53,27 +54,31 @@ export default {
       this.handleFile(file)
       return false
     },
-    handleFile (file) {
+    async handleFile (file) {
       if (!file.type.startsWith('image') || file.type === 'image/gif') { // 不支持GIF
         return
       }
-      let reader = new FileReader()
-      reader.onload = () => {
-        let img = new Image()
-        img.onload = async () => {
-          let url
-          if (this.isEncryption) {
-            url = URL.createObjectURL(encrypt(img))
-          } else {
-            url = await decrypt(img)
-          }
-          if (url !== '') {
-            this.fileList.push({name: file.name, url: url})
-          }
-        }
-        img.src = reader.result
+
+      let codec = createCodec()
+      try {
+        await codec.initFromBlob(file)
+      } catch (e) {
+        Notification.error({
+          title: 'bibo',
+          message: '载入图片失败：' + e,
+          position: 'bottom-left',
+          duration: 3000
+        })
+        return
       }
-      reader.readAsDataURL(file)
+
+      let url
+      if (this.isEncryption) {
+        url = URL.createObjectURL(codec.encryptToBlob())
+      } else {
+        url = codec.decryptToUrl()
+      }
+      this.fileList.push({name: file.name, url: url})
     },
     // 添加和删除文件都会调用，可能是element的bug
     handleChange (file, fileList) {
