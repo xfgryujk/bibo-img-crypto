@@ -6,7 +6,7 @@
       </a>
     </el-tooltip>
 
-    <el-dialog title="bibo-img-crypto v0.1.0" :visible.sync="dialogVisible">
+    <el-dialog title="bibo-img-crypto v1.0.0" :visible.sync="dialogVisible">
       <el-tabs>
         <el-tab-pane label="常规">
           <el-form label-width="100px">

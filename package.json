@@ -1,11 +1,12 @@
 {
   "name": "bibo-img-crypto",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
-    "lint": "vue-cli-service lint"
+    "lint": "vue-cli-service lint",
+    "release": "F:\\Anaconda3\\envs\\py3\\python.exe scripts\\release.py"
   },
   "dependencies": {
     "core-js": "^3.6.4",
