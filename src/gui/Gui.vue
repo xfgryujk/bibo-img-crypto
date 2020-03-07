@@ -21,6 +21,7 @@
                 <el-option label="反色" value="InvertCodec"></el-option>
                 <el-option label="RGB随机置乱" value="ShuffleRgbCodec"></el-option>
                 <el-option label="块随机置乱" value="ShuffleBlockCodec"></el-option>
+                <el-option label="马赛克" value="MosaicCodec"></el-option>
               </el-select>
             </el-form-item>
             <el-form-item label="随机种子">

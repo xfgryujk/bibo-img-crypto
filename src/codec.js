@@ -46,7 +46,6 @@ class Codec {
   constructor () {
     this._canvas = document.createElement('canvas')
     this._ctx = this._canvas.getContext('2d')
-    this._img = null
     this._imgData = null
   }
 
@@ -54,7 +53,7 @@ class Codec {
     let blobUrl = URL.createObjectURL(blob)
     try {
       let img = await loadImage(blobUrl)
-      this.initFromImg(img)
+      return this._initFromImg(img)
     } finally {
       URL.revokeObjectURL(blobUrl)
     }
@@ -62,14 +61,13 @@ class Codec {
 
   async initFromUrl (url) {
     let img = await loadImage(getImgSrcToDecrypt(url), true)
-    this.initFromImg(img)
+    return this._initFromImg(img)
   }
 
-  async initFromImg (img) {
-    this._img = img
-    this._canvas.width = this._img.width
-    this._canvas.height = this._img.height
-    this._ctx.drawImage(this._img, 0, 0)
+  async _initFromImg (img) {
+    this._canvas.width = img.width
+    this._canvas.height = img.height
+    this._ctx.drawImage(img, 0, 0)
     this._imgData = this._ctx.getImageData(0, 0, this._canvas.width, this._canvas.height)
   }
 
@@ -116,14 +114,13 @@ codecClasses.InvertCodec = InvertCodec
 
 // RGB随机置乱
 class ShuffleRgbCodec extends Codec {
-  async initFromImg (img) {
-    this._img = img
-    this._canvas.width = this._img.width
-    this._canvas.height = this._img.height
+  async _initFromImg (img) {
+    this._canvas.width = img.width
+    this._canvas.height = img.height
     // 把透明图片和白色混合，因为透明通道置乱会有问题
     this._ctx.fillStyle = '#fff'
-    this._ctx.fillRect(0, 0, this._img.width, this._img.height)
-    this._ctx.drawImage(this._img, 0, 0)
+    this._ctx.fillRect(0, 0, img.width, img.height)
+    this._ctx.drawImage(img, 0, 0)
     this._imgData = this._ctx.getImageData(0, 0, this._canvas.width, this._canvas.height)
   }
 
@@ -212,3 +209,106 @@ class ShuffleBlockCodec extends Codec {
   }
 }
 codecClasses.ShuffleBlockCodec = ShuffleBlockCodec
+
+// 连接两个图片文件，第一张图是打码的原图
+class MosaicCodec extends Codec {
+  constructor () {
+    super()
+    this._fileBuffer = null
+  }
+
+  async initFromBlob (blob) {
+    let initfileBufferPromise = new Promise((resolve, reject) => {
+      let reader = new FileReader()
+      reader.onerror = reject
+      reader.onload = event => {
+        this._fileBuffer = event.target.result
+        resolve()
+      }
+      reader.readAsArrayBuffer(blob)
+    })
+    let initImgDataPromise = super.initFromBlob(blob)
+    return Promise.all([initfileBufferPromise, initImgDataPromise])
+  }
+
+  async initFromUrl (url) {
+    let rsp = await fetch(getImgSrcToDecrypt(url))
+    if (!rsp.ok) {
+      throw new Error(`网络错误：${rsp.status} ${rsp.statusText}`)
+    }
+    return this.initFromBlob(await rsp.blob())
+  }
+
+  encryptToBlob () {
+    let newImgBlob = super.encryptToBlob()
+    return new Blob([newImgBlob, this._fileBuffer], {type: newImgBlob.type})
+  }
+
+  _doEncrypt () {
+    const BLOCK_SIZE = 32
+    for (let y = 0; y < this._imgData.height; y += BLOCK_SIZE) {
+      let blockHeight = Math.min(BLOCK_SIZE, this._imgData.height - y)
+      for (let x = 0; x < this._imgData.width; x += BLOCK_SIZE) {
+        let blockWidth = Math.min(BLOCK_SIZE, this._imgData.width - x)
+        this._mosaic(x, y, blockWidth, blockHeight)
+      }
+    }
+    return this._imgData
+  }
+
+  _mosaic (x, y, width, height) {
+    let data = this._imgData.data
+    for (let iChannel = 0; iChannel < 4; iChannel++) {
+      let total = 0
+      let iStart = (y * this._imgData.width + x) * 4 + iChannel
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          total += data[iStart + x * 4]
+        }
+        iStart += this._imgData.width * 4
+      }
+
+      let average = Math.round(total / width / height)
+      iStart = (y * this._imgData.width + x) * 4 + iChannel
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          data[iStart + x * 4] = average
+        }
+        iStart += this._imgData.width * 4
+      }
+    }
+  }
+
+  decryptToUrl () {
+    try {
+      let fileView = new DataView(this._fileBuffer)
+      // 检查PNG魔数
+      if (fileView.getUint32(0) !== 0x89504E47 || fileView.getUint32(4) !== 0x0D0A1A0A) {
+        return ''
+      }
+
+      // 跳过第一个图片文件
+      let offset = 8
+      let typeCode
+      do {
+        let dataLength = fileView.getUint32(offset)
+        typeCode = fileView.getUint32(offset + 4)
+        offset += 8 + dataLength + 4
+      } while (typeCode !== 0x49454E44) // IEND
+      if (offset >= fileView.byteLength) {
+        // 文件尾部没有数据
+        return ''
+      }
+
+      // 读第二个图片文件
+      let remainDataView = new DataView(this._fileBuffer, offset)
+      let remainDataBlob = new Blob([remainDataView])
+      return URL.createObjectURL(remainDataBlob)
+
+    } catch {
+      // 超出范围
+      return ''
+    }
+  }
+}
+codecClasses.MosaicCodec = MosaicCodec

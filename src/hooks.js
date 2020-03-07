@@ -74,7 +74,17 @@ function hookContextMenu () {
         return
       }
 
-      originImg.src = codec.decryptToUrl()
+      let url = codec.decryptToUrl()
+      if (url === '') {
+        Notification.error({
+          title: 'bibo',
+          message: '解密失败',
+          position: 'bottom-left',
+          duration: 3000
+        })
+        return
+      }
+      originImg.src = url
     }
   })
 }

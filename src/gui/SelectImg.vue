@@ -77,6 +77,15 @@ export default {
         url = URL.createObjectURL(codec.encryptToBlob())
       } else {
         url = codec.decryptToUrl()
+        if (url === '') {
+          Notification.error({
+            title: 'bibo',
+            message: '解密失败',
+            position: 'bottom-left',
+            duration: 3000
+          })
+          return
+        }
       }
       this.fileList.push({name: file.name, url: url})
     },
