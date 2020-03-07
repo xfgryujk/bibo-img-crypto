@@ -13,8 +13,8 @@ def main():
 // @name         bibo-img-crypto
 // @namespace    http://tampermonkey.net/
 // @version      {version}
-// @description  try to take over the world!
-// @author       You
+// @description  自动加密解密B博上传的图片。上传图片时自动加密，在图片上点击鼠标右键自动解密。GitHub: https://github.com/xfgryujk/bibo-img-crypto
+// @author       xfgryujk
 // @match        *://t.bilibili.com/*
 // @match        *://space.bilibili.com/*
 // @grant        none
