@@ -2,6 +2,16 @@
 自动加密解密B博上传的图片，[weibo-img-crypto](https://github.com/xfgryujk/weibo-img-crypto) 的B博版
 
 ## 如何使用
+### 方法 1，适合临时使用
+添加书签（收藏夹），把网址改成以下代码：
+
+```javascript
+javascript: (() => { let script = document.createElement('script'); script.onerror = () => alert('载入失败'); script.src = 'https://greasyfork.org/scripts/397467-bibo-img-crypto/code/bibo-img-crypto.user.js'; document.head.appendChild(script) })()
+```
+
+在B博页面点击这个书签加载脚本，**由于没有缓存会很慢**，所以推荐方法2。加载成功后，点击左下角的北极熊 ~~（天哥哥）~~ 按钮可以打开设置界面。上传图片时会自动加密，在图片上点击鼠标右键会自动解密
+
+### 方法 2，适合长期使用
 首先安装 [Tampermonkey](http://tampermonkey.net/) 浏览器扩展，然后[去 Greasy Fork 添加 bibo-img-crypto 脚本](https://greasyfork.org/zh-CN/scripts/397467-bibo-img-crypto)。加载成功后在B博页面点击左下角的北极熊 ~~（天哥哥）~~ 按钮可以打开设置界面。上传图片时会自动加密，在图片上点击鼠标右键会自动解密
 
 ## 算法说明
